@@ -7,7 +7,11 @@ import time
 import torch
 
 from inference import ensure_weights
-from utils import AttentionBackend, load_from_local_dir, set_attention_backend
+from Z_Image.src.utils import (
+    AttentionBackend,
+    load_from_local_dir,
+    set_attention_backend,
+)
 from zimage import generate
 
 
@@ -69,7 +73,9 @@ def main():
 
     device = select_device()
 
-    components = load_from_local_dir(model_path, device=device, dtype=dtype, compile=compile)
+    components = load_from_local_dir(
+        model_path, device=device, dtype=dtype, compile=compile
+    )
     AttentionBackend.print_available_backends()
     set_attention_backend(attn_backend)
     print(f"Chosen attention backend: {attn_backend}")
