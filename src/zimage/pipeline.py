@@ -88,6 +88,7 @@ def generate(
     cfg_truncation: float = DEFAULT_CFG_TRUNCATION,
     max_sequence_length: int = DEFAULT_MAX_SEQUENCE_LENGTH,
     output_type: str = "pil",
+    capture_activations=False,
 ):
     device = next(transformer.parameters()).device
 
@@ -228,6 +229,7 @@ def generate(
     )
 
     logger.info(f"Sampling loop start: {num_inference_steps} steps")
+    activations = {}
 
     from tqdm import tqdm
 
@@ -277,6 +279,13 @@ def generate(
             timestep_model_input,
             prompt_embeds_model_input,
         )[0]
+        
+        if capture_activations:
+            activations[i] = {
+                transformer.steering_location + str(mod): act
+                for mod, act in enumerate(transformer.collector.activations)
+            }
+            transformer.collector.clear()
 
         if apply_cfg:
             pos_out = model_out_list[:actual_batch_size]
@@ -319,4 +328,6 @@ def generate(
         image = (image * 255).round().astype("uint8")
         image = [Image.fromarray(img) for img in image]
 
+    if capture_activations:
+        return image, activations
     return image

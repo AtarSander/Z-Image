@@ -7,6 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
+from utils.steering_manager_wrappers import (
+    ActivationCollector,
+    CaptureActivationWrapper
+)
 
 from src.config import (
     ADALN_EMBED_DIM,
@@ -142,7 +146,7 @@ class ZImageAttention(nn.Module):
         query, key = query.to(dtype), key.to(dtype)
 
         # Dispatch
-        from utils.attention import dispatch_attention
+        from src.utils.attention import dispatch_attention
 
         hidden_states = dispatch_attention(
             query,
@@ -313,6 +317,7 @@ class ZImageTransformer2DModel(nn.Module):
         t_scale=1000.0,
         axes_dims=ROPE_AXES_DIMS,
         axes_lens=ROPE_AXES_LENS,
+        steering_location="ffn",
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -323,6 +328,7 @@ class ZImageTransformer2DModel(nn.Module):
         self.n_heads = n_heads
         self.rope_theta = rope_theta
         self.t_scale = t_scale
+        self.steering_location = steering_location
 
         assert len(all_patch_size) == len(all_f_patch_size)
 
@@ -656,3 +662,30 @@ class ZImageTransformer2DModel(nn.Module):
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
         return x, {}
+    
+    def configure_activation_capture(self):
+        self.collector = ActivationCollector()
+        wrap_layers(self, self.steering_location, self.collector)
+
+    def reset_activation_capture(self):
+        self.collector = None
+        self.capture_activations = False
+        unwrap_layers(self)
+
+
+def wrap_layers(model, steer_location, collector):
+    for l in model.layers:
+        if steer_location == "ffn":
+            l.feed_forward = CaptureActivationWrapper(l.feed_forward, collector)
+        elif steer_location == "attention":
+            l.attention = CaptureActivationWrapper(l.attention, collector)
+        torch.cuda.empty_cache()
+
+
+def unwrap_layers(model):
+    for l in model.layers:
+        if isinstance(l.feed_forward, CaptureActivationWrapper):
+            l.feed_forward = l.feed_forward.original_layer
+        if isinstance(l.attention, CaptureActivationWrapper):
+            l.attention = l.attention.original_layer
+        torch.cuda.empty_cache()

@@ -18,7 +18,7 @@ from src.zimage import generate
 
 def main():
     model_path = ensure_model_weights(
-        "ckpts/Z-Image-Turbo", verify=False
+        "/net/tscratch/people/plgatarsander/ckpts/Z-Image-Turbo", verify=False
     )  # True to verify with md5
     dtype = torch.bfloat16
     compile = False  # default False for compatibility
@@ -58,13 +58,15 @@ def main():
     components = load_from_local_dir(
         model_path, device=device, dtype=dtype, compile=compile
     )
+    components["transformer"].configure_activation_capture()
     AttentionBackend.print_available_backends()
     set_attention_backend(attn_backend)
     print(f"Chosen attention backend: {attn_backend}")
 
     # Gen an image
     start_time = time.time()
-    images = generate(
+
+    images, activations = generate(
         prompt=prompt,
         **components,
         height=height,
@@ -72,11 +74,12 @@ def main():
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         generator=torch.Generator(device).manual_seed(seed),
+        capture_activations=True
     )
     end_time = time.time()
     print(f"Time taken: {end_time - start_time:.2f} seconds")
     images[0].save(output_path)
-
+    print(activations[5])
     ### !! For best speed performance, recommend to use `_flash_3` backend and set `compile=True`
     ### This would give you sub-second generation speed on Hopper GPU (H100/H200/H800) after warm-up
 
