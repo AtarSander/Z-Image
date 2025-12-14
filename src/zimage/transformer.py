@@ -683,7 +683,7 @@ class ZImageTransformer2DModel(nn.Module):
 
         self._steering_wrapped = []
 
-        for layer_id, layer in self.layers:
+        for layer_id, layer in enumerate(self.layers):
             if steering_location == "ffn":
                 parent, attr, original = layer, "ffn", layer.feed_forward
             elif steering_location == "attention":
