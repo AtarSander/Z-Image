@@ -88,7 +88,8 @@ def generate(
     cfg_truncation: float = DEFAULT_CFG_TRUNCATION,
     max_sequence_length: int = DEFAULT_MAX_SEQUENCE_LENGTH,
     output_type: str = "pil",
-    capture_activations=False,
+    capture_activations:bool=False,
+    logging:bool=False,
 ):
     device = next(transformer.parameters()).device
 
@@ -110,9 +111,10 @@ def generate(
         batch_size = len(prompt)
 
     do_classifier_free_guidance = guidance_scale > 1.0
-    logger.info(
-        f"Generating image: {height}x{width}, steps={num_inference_steps}, cfg={guidance_scale}"
-    )
+    if logging:
+        logger.info(
+            f"Generating image: {height}x{width}, steps={num_inference_steps}, cfg={guidance_scale}"
+        )
 
     formatted_prompts = []
     for p in prompt:
@@ -227,19 +229,20 @@ def generate(
         sigmas=None,
         **scheduler_kwargs,
     )
-
-    logger.info(f"Sampling loop start: {num_inference_steps} steps")
+    if logging:
+        logger.info(f"Sampling loop start: {num_inference_steps} steps")
     activations = {}
 
     from tqdm import tqdm
 
     # Denoising loop with progress bar
-    for i, t in enumerate(tqdm(timesteps, desc="Denoising", total=len(timesteps))):
+    for i, t in enumerate(tqdm(timesteps, desc="Denoising", total=len(timesteps), disable=(not logging))):
         # If current t is 0 and it's the last step, skip computation
         if t == 0 and i == len(timesteps) - 1:
-            logger.debug(
-                f"Step {i+1}/{num_inference_steps} | t: {t.item():.2f} | Skipping last step"
-            )
+            if logging:
+                logger.debug(
+                    f"Step {i+1}/{num_inference_steps} | t: {t.item():.2f} | Skipping last step"
+                )
             continue
 
         timestep = t.expand(latents.shape[0])

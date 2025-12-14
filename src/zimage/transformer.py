@@ -7,11 +7,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
+
 from utils.steering_manager_wrappers import (
     ActivationCollector,
-    CaptureActivationWrapper
+    CaptureActivationWrapper,
 )
-
+from utils.steering_methods import SteeringWrapper, SteeringMode
 from src.config import (
     ADALN_EMBED_DIM,
     FREQUENCY_EMBEDDING_SIZE,
@@ -662,7 +663,7 @@ class ZImageTransformer2DModel(nn.Module):
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
         return x, {}
-    
+
     def configure_activation_capture(self):
         self.collector = ActivationCollector()
         wrap_layers(self, self.steering_location, self.collector)
@@ -671,6 +672,46 @@ class ZImageTransformer2DModel(nn.Module):
         self.collector = None
         self.capture_activations = False
         unwrap_layers(self)
+
+    def enable_registry_steering(
+        self,
+        registry,
+        schedule_by_scale: dict,
+        steering_location: str = "ffn",
+        steering_mode=SteeringMode.BOTH,
+    ):
+
+        self._steering_wrapped = []
+
+        for layer_id, layer in self.layers:
+            if steering_location == "ffn":
+                parent, attr, original = layer, "ffn", layer.feed_forward
+            elif steering_location == "attention":
+                parent, attr, original = layer, "attention", layer.attention
+            else:
+                raise ValueError(steering_location)
+
+            wrapper = SteeringWrapper(
+                original_layer=original,
+                model_root=self,
+                layer_id=layer_id,
+                location=steering_location,
+                registry=registry,
+                schedule_by_scale=schedule_by_scale,
+                mode=steering_mode,
+            )
+            setattr(parent, attr, wrapper)
+            self._steering_wrapped.append((parent, attr, original))
+
+    def disable_registry_steering(self):
+        if hasattr(self, "_steering_wrapped"):
+            for parent, attr, original in self._steering_wrapped:
+                setattr(parent, attr, original)
+            self._steering_wrapped.clear()
+        if hasattr(self, "_steering_scale_callback"):
+            del self._steering_scale_callback
+        if hasattr(self, "_current_scale"):
+            del self._current_scale
 
 
 def wrap_layers(model, steer_location, collector):
