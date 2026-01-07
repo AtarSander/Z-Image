@@ -88,8 +88,8 @@ def generate(
     cfg_truncation: float = DEFAULT_CFG_TRUNCATION,
     max_sequence_length: int = DEFAULT_MAX_SEQUENCE_LENGTH,
     output_type: str = "pil",
-    capture_activations:bool=False,
-    logging:bool=False,
+    capture_activations: bool = False,
+    logging: bool = False,
 ):
     device = next(transformer.parameters()).device
 
@@ -236,7 +236,9 @@ def generate(
     from tqdm import tqdm
 
     # Denoising loop with progress bar
-    for i, t in enumerate(tqdm(timesteps, desc="Denoising", total=len(timesteps), disable=(not logging))):
+    for i, t in enumerate(
+        tqdm(timesteps, desc="Denoising", total=len(timesteps), disable=(not logging))
+    ):
         # If current t is 0 and it's the last step, skip computation
         if t == 0 and i == len(timesteps) - 1:
             if logging:
@@ -244,7 +246,8 @@ def generate(
                     f"Step {i+1}/{num_inference_steps} | t: {t.item():.2f} | Skipping last step"
                 )
             continue
-
+        if hasattr(transformer, "_steering_timestep_callback"):
+            transformer._steering_timestep_callback(i)
         timestep = t.expand(latents.shape[0])
         timestep = (1000 - timestep) / 1000
         t_norm = timestep[0].item()
@@ -282,7 +285,7 @@ def generate(
             timestep_model_input,
             prompt_embeds_model_input,
         )[0]
-        
+
         if capture_activations:
             activations[i] = {
                 transformer.steering_location + str(mod): act

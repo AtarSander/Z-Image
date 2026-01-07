@@ -330,6 +330,7 @@ class ZImageTransformer2DModel(nn.Module):
         self.rope_theta = rope_theta
         self.t_scale = t_scale
         self.steering_location = steering_location
+        self._current_step = 0
 
         assert len(all_patch_size) == len(all_f_patch_size)
 
@@ -680,12 +681,16 @@ class ZImageTransformer2DModel(nn.Module):
         steering_location: str = "ffn",
         steering_mode=SteeringMode.BOTH,
     ):
+        def _cb(si: int):
+            self._current_step = si
+
+        self._steering_timestep_callback = _cb
 
         self._steering_wrapped = []
 
         for layer_id, layer in enumerate(self.layers):
             if steering_location == "ffn":
-                parent, attr, original = layer, "ffn", layer.feed_forward
+                parent, attr, original = layer, "feed_forward", layer.feed_forward
             elif steering_location == "attention":
                 parent, attr, original = layer, "attention", layer.attention
             else:
@@ -699,6 +704,7 @@ class ZImageTransformer2DModel(nn.Module):
                 registry=registry,
                 schedule_by_scale=schedule_by_scale,
                 mode=steering_mode,
+                double_batch=False,
             )
             setattr(parent, attr, wrapper)
             self._steering_wrapped.append((parent, attr, original))
@@ -708,10 +714,8 @@ class ZImageTransformer2DModel(nn.Module):
             for parent, attr, original in self._steering_wrapped:
                 setattr(parent, attr, original)
             self._steering_wrapped.clear()
-        if hasattr(self, "_steering_scale_callback"):
-            del self._steering_scale_callback
-        if hasattr(self, "_current_scale"):
-            del self._current_scale
+        if hasattr(self, "_steering_timestep_callback"):
+            del self._steering_timestep_callback
 
 
 def wrap_layers(model, steer_location, collector):
